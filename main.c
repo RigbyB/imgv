@@ -1,20 +1,22 @@
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <SDL2/SDL.h>
 
 struct PPMFile {
     const char* path;
-    char magic_number[3];
+    uint8_t* data;
     int width;
     int height;
     int max_color;
-    uint8_t* data;
+    char magic_number[3];
 };
 
 struct PPMFile* ppm_read_file(const char* path) {
-    FILE* open_file = fopen(path, "r");
+    FILE* open_file = NULL;
     
-    if (open_file == NULL) {
+    if (fopen_s(&open_file, path, "r") != 0) {
         fprintf(stderr, "Failed to open file %s.\n", path);
         return NULL;
     }
@@ -22,24 +24,24 @@ struct PPMFile* ppm_read_file(const char* path) {
     // 3 (include null terminator)
     char magic_number[3];
 
-    if (fscanf(open_file, "%2s", magic_number) != 1 ||
+    if (fscanf_s(open_file, "%2s", magic_number, (unsigned int)_countof(magic_number)) != 1 ||
         magic_number[0] != 'P' ||
         magic_number[1] != '3'
-    ) {
+        ) {
         fprintf(stderr, "File is not in PPM P3 format.\n");
         return NULL;
     }
 
     int width = 0, height = 0;
-    
-    if (fscanf(open_file, "%i %i", &width, &height) != 2) {
+
+    if (fscanf_s(open_file, "%i %i", &width, &height) != 2) {
         fprintf(stderr, "Error reading image dimensions.\n");
         return NULL;
     }
 
     int max_color = 0;
 
-    if (fscanf(open_file, "%i", &max_color) != 1) {
+    if (fscanf_s(open_file, "%i", &max_color) != 1) {
         fprintf(stderr, "Error reading max color.\n");
         return NULL;
     }
@@ -59,7 +61,7 @@ struct PPMFile* ppm_read_file(const char* path) {
         uint8_t g = 0;
         uint8_t b = 0;
 
-        if (fscanf(open_file, "%hhu %hhu %hhu", &r, &g, &b) != 3) {
+        if (fscanf_s(open_file, "%hhu %hhu %hhu", &r, &g, &b) != 3) {
             fprintf(stderr, "Error reading pixel data.\n");
             return NULL;
         }
@@ -71,7 +73,7 @@ struct PPMFile* ppm_read_file(const char* path) {
         data[i * 4 + 1] = b;
         data[i * 4 + 2] = g;
         data[i * 4 + 3] = r;
-    }    
+    }
 
     struct PPMFile* ppm_file = malloc(sizeof(struct PPMFile));
 
@@ -81,7 +83,12 @@ struct PPMFile* ppm_read_file(const char* path) {
     }
 
     ppm_file->path = path;
-    strncpy(ppm_file->magic_number, magic_number, 3);
+   
+    if (strncpy_s(ppm_file->magic_number, sizeof(ppm_file->magic_number), magic_number, 3) != 0) {
+        fprintf(stderr, "Failed to copy PPMFile magic number.\n");
+        return NULL;
+    }
+    
     ppm_file->width = width;
     ppm_file->height = height;
     ppm_file->max_color = max_color;
@@ -104,14 +111,14 @@ void ppm_print_details(struct PPMFile* file) {
 void sdl_render_once(SDL_Renderer* renderer, struct PPMFile* ppm_file) {
     if (ppm_file) {
         SDL_Texture* texture = SDL_CreateTexture(
-            renderer, 
+            renderer,
             SDL_PIXELFORMAT_RGBA8888,
             SDL_TEXTUREACCESS_STREAMING,
             ppm_file->width, ppm_file->height     // Texture size fills window
         );
 
         if (texture == NULL) {
-            fprintf(stderr, "Failed to create SDL texture: %s.\n", SDL_GetError()); 
+            fprintf(stderr, "Failed to create SDL texture: %s.\n", SDL_GetError());
             exit(EXIT_FAILURE);
         }
 
@@ -119,13 +126,13 @@ void sdl_render_once(SDL_Renderer* renderer, struct PPMFile* ppm_file) {
         int texture_pitch = 0;
 
         if (SDL_LockTexture(
-            texture, 
+            texture,
             NULL,               // Area (rect) to lock
-            &texture_pixels,    
+            &texture_pixels,
             &texture_pitch      // Pitch - length of one row in bytes
         ) != 0)
         {
-            fprintf(stderr, "Failed to lock SDL texture: %s.\n", SDL_GetError()); 
+            fprintf(stderr, "Failed to lock SDL texture: %s.\n", SDL_GetError());
             exit(EXIT_FAILURE);
         }
 
@@ -139,20 +146,21 @@ void sdl_render_once(SDL_Renderer* renderer, struct PPMFile* ppm_file) {
         SDL_UnlockTexture(texture);
 
         SDL_Rect texture_rect;
-        texture_rect.x = 0; 
-        texture_rect.y = 0; 
-        texture_rect.w = ppm_file->width; 
+        texture_rect.x = 0;
+        texture_rect.y = 0;
+        texture_rect.w = ppm_file->width;
         texture_rect.h = ppm_file->height;
 
         SDL_RenderCopy(
-            renderer, 
-            texture, 
+            renderer,
+            texture,
             NULL,           // Source rect
             &texture_rect   // Target rect
         );
 
         SDL_DestroyTexture(texture);
-    } else {
+    }
+    else {
         SDL_SetRenderDrawColor(renderer, 0, 0, 255, 255);
         SDL_RenderClear(renderer);
     }
@@ -181,12 +189,12 @@ bool update_state(const char* new_image_path, struct PPMFile** ppm_file, SDL_Win
     return true;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     struct PPMFile* ppm_file = NULL;
-    
+
     if (argc > 1) {
         ppm_file = ppm_read_file(argv[1]);
-    
+
         if (ppm_file) {
             ppm_print_details(ppm_file);
         }
@@ -205,7 +213,7 @@ int main(int argc, char *argv[]) {
 
     SDL_Window* window = SDL_CreateWindow(
         window_title,
-        SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, 
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         window_width, window_height,
         0   // Flags
     );
@@ -214,17 +222,17 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Failed to create SDL window: %s\n.", SDL_GetError());
         exit(EXIT_FAILURE);
     }
-    
+
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
-    
+
     SDL_Renderer* renderer = SDL_CreateRenderer(
-        window, 
+        window,
         -1,     // Default renderering driver   
         0       // Flags
     );
 
     if (renderer == NULL) {
-        fprintf(stderr, "Failed to create SDL renderer: %s\n.", SDL_GetError()); 
+        fprintf(stderr, "Failed to create SDL renderer: %s\n.", SDL_GetError());
         exit(EXIT_FAILURE);
     }
 
@@ -238,27 +246,27 @@ int main(int argc, char *argv[]) {
 
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
-                case SDL_QUIT:
+            case SDL_QUIT:
+                running = false;
+                break;
+
+            case SDL_KEYDOWN:
+                if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_q) {
                     running = false;
-                    break;
-                
-                case SDL_KEYDOWN:
-                    if (event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_q) {
-                        running = false;
-                    }
+                }
 
-                    break;
+                break;
 
-                case SDL_DROPFILE: 
-                    if (update_state(event.drop.file, &ppm_file, window)) {
-                        sdl_render_once(renderer, ppm_file);
-                    }
+            case SDL_DROPFILE:
+                if (update_state(event.drop.file, &ppm_file, window)) {
+                    sdl_render_once(renderer, ppm_file);
+                }
 
-                    SDL_free(event.drop.file);   
-                    break;
+                SDL_free(event.drop.file);
+                break;
 
-                default:
-                    break;
+            default:
+                break;
             }
         }
 
